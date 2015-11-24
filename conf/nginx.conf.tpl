@@ -22,6 +22,11 @@ http {
         listen       %%PORT%%;
         server_name  localhost;
 
+        location = /style.css {
+            root         %%CUR_DIR%%/html;   
+            udp_logging  localhost;
+        }
+
         location / {
             root        %%CUR_DIR%%/html;
             index       index.html index.htm;

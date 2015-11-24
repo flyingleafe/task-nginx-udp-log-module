@@ -3,6 +3,7 @@
 #include <ngx_http.h>
 
 #define DEFAULT_UDP_PORT 60228
+#define CRC32_STR_LEN 10
 
 // Plan:
 // Use `ngx_udp_connection_t` with `off` flag as custom config
@@ -71,24 +72,38 @@ ngx_module_t  ngx_http_udp_log_module = {
     NGX_MODULE_V1_PADDING
 };
 
+
+// This is a dummy handler. It's necessary because Nginx attempts to read from
+// opened connection and process result with given handler. If no handler
+// is given at all, an error occurs.
 static void ngx_http_do_nothing_hangler(ngx_event_t *ev)
 {}
 
-ngx_int_t
-ngx_http_udp_log_send(ngx_udp_connection_t *udp_conn, u_char *buf, size_t len, ngx_log_t *log)
-{
-    // We don't connect to UDP server until it's time to send something
-    // This is done so in order to provide
-    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, log, 0, "ENTER LOG SEND METHOD");
 
+// Attempts to establish UDP connection (if no connection is established yet)
+ngx_int_t
+ngx_http_udp_log_connect(ngx_udp_connection_t *udp_conn)
+{
     if (udp_conn->connection == NULL) {
-        ngx_log_debug0(NGX_LOG_DEBUG_HTTP, log, 0, "udp connection is not established, connecting");
         if (ngx_udp_connect(udp_conn) != NGX_OK) {
             udp_conn->connection = NULL;
             return NGX_ERROR;
         }
         udp_conn->connection->read->handler  = ngx_http_do_nothing_hangler;
         udp_conn->connection->read->resolver = 0;
+    }
+    return NGX_OK;
+}
+
+
+// Send log entry
+ngx_int_t
+ngx_http_udp_log_send(ngx_udp_connection_t *udp_conn, u_char *buf, size_t len, ngx_log_t *log)
+{
+    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, log, 0, "ENTER LOG SEND METHOD");
+
+    if (ngx_http_udp_log_connect(udp_conn) != NGX_OK) {
+        return NGX_ERROR;
     }
 
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, log, 0, "sending udp packet");
@@ -101,10 +116,13 @@ ngx_http_udp_log_send(ngx_udp_connection_t *udp_conn, u_char *buf, size_t len, n
 }
 
 
+// Main request handler
 ngx_int_t
 ngx_http_udp_log_handler(ngx_http_request_t *r)
 {
     ngx_http_udp_log_conf_t *lcf;
+    u_char                  *line, *p;
+    ngx_uint_t               len;
 
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "udp log handler");
 
@@ -114,8 +132,19 @@ ngx_http_udp_log_handler(ngx_http_request_t *r)
         return NGX_OK;
     }
 
-    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "trying to send request uri to udp");
-    return ngx_http_udp_log_send(lcf->udp_connection, r->uri.data, r->uri.len, r->connection->log);
+    len = r->method_name.len + 1 + r->uri.len + 1 +
+        1 + CRC32_STR_LEN + 1 + NGX_LINEFEED_SIZE;
+
+    line = ngx_palloc(r->pool, len);
+
+    p = ngx_copy(line, r->method_name.data, r->method_name.len);
+    *p++ = ' ';
+    p = ngx_copy(p, r->uri.data, r->uri.len);
+    p = ngx_snprintf(p, CRC32_STR_LEN + 3, " (0x%8xd)",
+                     ngx_crc32_short(r->uri.data, r->uri.len));
+    ngx_linefeed(p);
+
+    return ngx_http_udp_log_send(lcf->udp_connection, line, len, r->connection->log);
 }
 
 
@@ -125,6 +154,8 @@ ngx_http_udp_log_set_url(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     ngx_http_udp_log_conf_t *ulcf = conf;
     ngx_url_t                serv;
     ngx_str_t               *value;
+    struct sockaddr         *udp_addr;
+    ngx_udp_connection_t    *udp_conn;
 
     value = cf->args->elts;
 
@@ -146,9 +177,9 @@ ngx_http_udp_log_set_url(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         return NGX_CONF_ERROR;
     }
 
-    // Copy data from `ngx_url_t` to `ngx_udp_connection_t`
-    struct sockaddr       *udp_addr = ngx_palloc(cf->pool, sizeof(struct sockaddr));
-    ngx_udp_connection_t  *udp_conn = ngx_palloc(cf->pool, sizeof(ngx_udp_connection_t));
+    // Copy data from `serv` to `udp_conn`
+    udp_addr = ngx_palloc(cf->pool, sizeof(struct sockaddr));
+    udp_conn = ngx_palloc(cf->pool, sizeof(ngx_udp_connection_t));
 
     *udp_addr             = *serv.addrs[0].sockaddr;
     udp_conn->connection  = NULL;

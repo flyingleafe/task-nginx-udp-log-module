@@ -3,8 +3,11 @@ MODULE_DIR := $(CUR_DIR)/src
 NGX_DIR    := $(CUR_DIR)/nginx
 CONF_DIR   := $(CUR_DIR)/conf
 LOG_DIR    := $(CUR_DIR)/logs
+TESTER_DIR := $(CUR_DIR)/tester
 
 NGX_MAKEFILE   := $(NGX_DIR)/Makefile
+MODULE_SRC     := $(MODULE_DIR)/ngx_http_udp_log_module.c
+TESTER_SRC     := $(TESTER_DIR)/tester.go
 NGX_OBJS_DIR   := $(NGX_DIR)/objs
 NGX_EXECUTABLE := $(NGX_OBJS_DIR)/nginx
 CONF_FILE      := $(CONF_DIR)/nginx.conf
@@ -12,6 +15,8 @@ ERROR_LOG      := $(LOG_DIR)/error.log
 ACCESS_LOG     := $(LOG_DIR)/access.log
 PID_FILE       := $(LOG_DIR)/nginx.pid
 LOCK_FILE      := $(LOG_DIR)/nginx.lock
+
+GOBUILD := go build
 
 # Port for nginx to listen on. Here just for convenience
 PORT := 8080
@@ -33,7 +38,7 @@ $(NGX_MAKEFILE): $(LOG_DIR)
 		--pid-path=$(PID_FILE) \
 		--lock-path=$(LOCK_FILE)
 
-$(NGX_EXECUTABLE): $(NGX_MAKEFILE)
+$(NGX_EXECUTABLE): $(NGX_MAKEFILE) $(MODULE_SRC)
 	cd $(NGX_DIR) && $(MAKE)
 
 $(LOG_DIR):
@@ -69,3 +74,6 @@ ngx_stop:
 	else \
 		echo "Nginx is not running"; \
 	fi
+
+test_srv: $(TESTER_SRC)
+	$(GOBUILD) -o $@ $<
