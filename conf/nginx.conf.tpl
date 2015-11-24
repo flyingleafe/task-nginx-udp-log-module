@@ -1,4 +1,5 @@
 worker_processes  1;
+error_log %%ERROR_LOG%% debug;
 
 events {
     worker_connections  1024;
@@ -18,12 +19,13 @@ http {
     keepalive_timeout  65;
 
     server {
-        listen       8080;
+        listen       %%PORT%%;
         server_name  localhost;
 
         location / {
-            root   %%CUR_DIR%%/html;
-            index  index.html index.htm;
+            root        %%CUR_DIR%%/html;
+            index       index.html index.htm;
+            udp_logging localhost:60300;
         }
 
         error_page   500 502 503 504  /50x.html;

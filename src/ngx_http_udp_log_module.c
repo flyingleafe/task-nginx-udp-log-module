@@ -71,18 +71,27 @@ ngx_module_t  ngx_http_udp_log_module = {
     NGX_MODULE_V1_PADDING
 };
 
+static void ngx_http_do_nothing_hangler(ngx_event_t *ev)
+{}
 
 ngx_int_t
-ngx_http_udp_log_send(ngx_udp_connection_t *udp_conn, u_char *buf, size_t len)
+ngx_http_udp_log_send(ngx_udp_connection_t *udp_conn, u_char *buf, size_t len, ngx_log_t *log)
 {
     // We don't connect to UDP server until it's time to send something
     // This is done so in order to provide
+    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, log, 0, "ENTER LOG SEND METHOD");
+
     if (udp_conn->connection == NULL) {
+        ngx_log_debug0(NGX_LOG_DEBUG_HTTP, log, 0, "udp connection is not established, connecting");
         if (ngx_udp_connect(udp_conn) != NGX_OK) {
             udp_conn->connection = NULL;
             return NGX_ERROR;
         }
+        udp_conn->connection->read->handler  = ngx_http_do_nothing_hangler;
+        udp_conn->connection->read->resolver = 0;
     }
+
+    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, log, 0, "sending udp packet");
 
     ssize_t n = ngx_send(udp_conn->connection, buf, len);
     if (n == -1) {
@@ -105,7 +114,8 @@ ngx_http_udp_log_handler(ngx_http_request_t *r)
         return NGX_OK;
     }
 
-    return ngx_http_udp_log_send(lcf->udp_connection, r->uri.data, r->uri.len);
+    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "trying to send request uri to udp");
+    return ngx_http_udp_log_send(lcf->udp_connection, r->uri.data, r->uri.len, r->connection->log);
 }
 
 
@@ -123,6 +133,8 @@ ngx_http_udp_log_set_url(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         ulcf->off = 1;
         return NGX_CONF_OK;
     }
+
+    ulcf->off = 0;
 
     // Try to parse given host:port string
     ngx_memzero(&serv, sizeof(ngx_url_t));
@@ -156,6 +168,8 @@ ngx_http_udp_log_set_url(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     udp_conn->log.data    = NULL;
     udp_conn->log.handler = NULL;
     udp_conn->log.action  = "logging";
+
+    ulcf->udp_connection = udp_conn;
 
     return NGX_CONF_OK;
 }
