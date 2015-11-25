@@ -23,7 +23,7 @@ PORT := 8080
 
 .PHONY: all config configure clean clean_objs ngx_start ngx_stop
 
-all: $(CONF_FILE) $(NGX_EXECUTABLE)
+all: $(CONF_FILE) $(NGX_EXECUTABLE) test_srv
 
 configure: $(NGX_MAKEFILE)
 config: $(CONF_FILE)
@@ -56,6 +56,7 @@ clean:
 		cd $(NGX_DIR) && $(MAKE) clean; \
 	fi
 	rm -rf $(CONF_FILE) $(LOG_DIR)
+	rm -f test_srv
 
 clean_objs:
 	find $(NGX_OBJS_DIR) -name "**.o" -exec rm -f {} \;

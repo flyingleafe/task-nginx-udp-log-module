@@ -80,6 +80,7 @@ static void ngx_http_do_nothing_hangler(ngx_event_t *ev)
 {}
 
 
+
 // Attempts to establish UDP connection (if no connection is established yet)
 ngx_int_t
 ngx_http_udp_log_connect(ngx_udp_connection_t *udp_conn)
@@ -98,15 +99,15 @@ ngx_http_udp_log_connect(ngx_udp_connection_t *udp_conn)
 
 // Send log entry
 ngx_int_t
-ngx_http_udp_log_send(ngx_udp_connection_t *udp_conn, u_char *buf, size_t len, ngx_log_t *log)
+ngx_http_udp_log_send(ngx_udp_connection_t *udp_conn, u_char *buf, size_t len)
 {
-    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, log, 0, "ENTER LOG SEND METHOD");
+    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, ngx_cycle->log, 0, "ENTER LOG SEND METHOD");
 
     if (ngx_http_udp_log_connect(udp_conn) != NGX_OK) {
         return NGX_ERROR;
     }
 
-    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, log, 0, "sending udp packet");
+    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, ngx_cycle->log, 0, "sending udp packet");
 
     ssize_t n = ngx_send(udp_conn->connection, buf, len);
     if (n == -1) {
@@ -123,6 +124,7 @@ ngx_http_udp_log_handler(ngx_http_request_t *r)
     ngx_http_udp_log_conf_t *lcf;
     u_char                  *line, *p;
     ngx_uint_t               len;
+    ngx_uint_t               res;
 
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, "udp log handler");
 
@@ -136,6 +138,9 @@ ngx_http_udp_log_handler(ngx_http_request_t *r)
         1 + CRC32_STR_LEN + 1 + NGX_LINEFEED_SIZE;
 
     line = ngx_palloc(r->pool, len);
+    if (line == NULL) {
+        return NGX_ERROR;
+    }
 
     p = ngx_copy(line, r->method_name.data, r->method_name.len);
     *p++ = ' ';
@@ -144,10 +149,15 @@ ngx_http_udp_log_handler(ngx_http_request_t *r)
                      ngx_crc32_short(r->uri.data, r->uri.len));
     ngx_linefeed(p);
 
-    return ngx_http_udp_log_send(lcf->udp_connection, line, len, r->connection->log);
+    res = ngx_http_udp_log_send(lcf->udp_connection, line, len);
+
+    ngx_pfree(r->pool, line);
+
+    return res;
 }
 
 
+// Applies configuration directive
 static char *
 ngx_http_udp_log_set_url(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
