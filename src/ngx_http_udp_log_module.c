@@ -5,11 +5,6 @@
 #define DEFAULT_UDP_PORT 60228
 #define CRC32_STR_LEN 8
 
-// Plan:
-// Use `ngx_udp_connection_t` with `off` flag as custom config
-// Use `ngx_parse_url` to get everything we need from settings
-// Use `ngx_pool_cleanup_add` to add handler for cleaning up udp connections
-// Check setting for `off` in order to be able to turn off the module
 typedef struct {
     ngx_udp_connection_t   *udp_connection;
     ngx_flag_t              off;
