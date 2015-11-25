@@ -18,11 +18,16 @@ See the [configuration template](conf/nginx.conf.tpl) for better understanding.
 ### Log format
 Plugin sends UDP packets in the following format:
 ```
-<method_name> <request_uri> (<crc32_of_uri>)<linefeed>
+<method_name>
+<request_uri>
+<crc32_of_uri>
 ```
+Fields are separated by linefeed (`\n` on Unix system, `\r\n` on Windows).
 For example,
 ```
-GET /index.html (0xea224b42)\n
+GET
+/index.html
+ea224b42
 ```
 ### Building the plugin
 To build and test the plugin, you should also have Nginx sources. Fortunately, they are included as a submodule.
@@ -36,4 +41,4 @@ There is a small UDP server for testing included, written in Go. Usage:
 ```
 ./test_srv <port1> <port2> ... <portN>
 ```
-This starts a server listening for `N` ports and printing all it gets to `stdout`.
+This starts a server listening for `N` ports and printing log entries it gets to `stdout`.

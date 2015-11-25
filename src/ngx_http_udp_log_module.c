@@ -3,7 +3,7 @@
 #include <ngx_http.h>
 
 #define DEFAULT_UDP_PORT 60228
-#define CRC32_STR_LEN 10
+#define CRC32_STR_LEN 8
 
 // Plan:
 // Use `ngx_udp_connection_t` with `off` flag as custom config
@@ -134,20 +134,23 @@ ngx_http_udp_log_handler(ngx_http_request_t *r)
         return NGX_OK;
     }
 
-    len = r->method_name.len + 1 + r->uri.len + 1 +
-        1 + CRC32_STR_LEN + 1 + NGX_LINEFEED_SIZE;
+    len = r->method_name.len + NGX_LINEFEED_SIZE +
+        r->uri.len + NGX_LINEFEED_SIZE + CRC32_STR_LEN;
 
+    // It was necessary to avoid memory allocations while processing the request.
+    // It's done with `ngx_palloc` - because it returns a piece of pre-allocated
+    // data in `ngx_pool_t`. That's how `malloc` is not called for every request.
     line = ngx_palloc(r->pool, len);
     if (line == NULL) {
         return NGX_ERROR;
     }
 
     p = ngx_copy(line, r->method_name.data, r->method_name.len);
-    *p++ = ' ';
-    p = ngx_copy(p, r->uri.data, r->uri.len);
-    p = ngx_snprintf(p, CRC32_STR_LEN + 3, " (0x%8xd)",
-                     ngx_crc32_short(r->uri.data, r->uri.len));
     ngx_linefeed(p);
+    p = ngx_copy(p, r->uri.data, r->uri.len);
+    ngx_linefeed(p);
+    p = ngx_snprintf(p, CRC32_STR_LEN, "%8xd",
+                     ngx_crc32_short(r->uri.data, r->uri.len));
 
     res = ngx_http_udp_log_send(lcf->udp_connection, line, len);
 
@@ -253,6 +256,12 @@ ngx_http_udp_log_init(ngx_conf_t *cf)
 
     cmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_core_module);
 
+    // We use log phase for at least 2 reasons
+    // 1) It makes sense, because we do logging!
+    // 2) If a handler returns an error at some phase, request stops to be processed.
+    // But it's not critical if something goes wrong with logging, and user should still
+    // get the response. So logging should take place after the response is generated
+    // and send back (NGX_HTTP_CONTENT_PHASE), which is possible only in NGX_HTTP_LOG_PHASE
     h = ngx_array_push(&cmcf->phases[NGX_HTTP_LOG_PHASE].handlers);
     if (h == NULL) {
         return NGX_ERROR;

@@ -5,6 +5,7 @@ import (
     "fmt"
     "net"
     "sync"
+    "strings"
 )
 
 func checkError(err error) {
@@ -27,7 +28,13 @@ func listenUDP(port string) {
 
     for {
         n, _, err := conn.ReadFromUDP(buf)
-        fmt.Print("Received on port ", port, ": ", string(buf[:n]))
+
+        fields := strings.Fields(string(buf[:n]))
+
+        fmt.Println("Received on port", port)
+        fmt.Println("    Method: ", fields[0])
+        fmt.Println("    URI:    ", fields[1])
+        fmt.Println("    CRC32:  ", fields[2])
 
         if err != nil {
             fmt.Println("Error (port ", port, "): ", err)
@@ -41,7 +48,6 @@ func main() {
 
     wg.Add(len(ports))
     for _, port := range ports {
-        fmt.Println(port)
         go func(port string) {
             defer wg.Done()
             listenUDP(port)
